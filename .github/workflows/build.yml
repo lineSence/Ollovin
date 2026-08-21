@@ -15,3 +15,24 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+
+      - name: Validate plugin files
+        run: |
+          test -f main.js
+          test -f manifest.json
+
+      - name: Package plugin
+        run: |
+          mkdir -p dist/ollovin
+          cp main.js manifest.json dist/ollovin/
+          if [ -f styles.css ]; then cp styles.css dist/ollovin/; fi
+          cd dist
+          zip -r "Ollovin-${GITHUB_SHA::7}.zip" ollovin
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ollovin-build-${{ github.sha }}
+          path: dist/Ollovin-*.zip
+          if-no-files-found: error
+          retention-days: 14
