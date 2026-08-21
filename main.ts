@@ -1,4 +1,4 @@
-import { App, ItemView, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
+import { App, ItemView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { OllamaClient } from "./src/ollama";
 import { OllovinSettings, RetrievalResult } from "./src/types";
 import { VaultIndex } from "./src/vault-index";
@@ -29,12 +29,12 @@ export default class OllovinPlugin extends Plugin {
     this.planner = new ActionPlanner(this.app);
 
     this.registerView(VIEW_TYPE_OLLOVIN, (leaf) => new OllovinView(leaf, this));
-    this.addRibbonIcon("brain", "Open Ollovin", () => void this.activateView());
-    this.addCommand({ id: "open-assistant", name: "Open Assistant", callback: () => this.activateView() });
-    this.addCommand({ id: "analyze-current-note", name: "Analyze Current Note", callback: () => void this.analyzeCurrentNote() });
-    this.addCommand({ id: "find-related", name: "Find Related Notes", callback: () => void this.findRelated() });
-    this.addCommand({ id: "reindex", name: "Reindex Vault", callback: () => void this.reindex() });
-    this.addCommand({ id: "generate-test-vault", name: "Generate Test Vault", callback: () => void generateTestVault(this.app) });
+    this.addRibbonIcon("brain", "Открыть Ollovin", () => void this.activateView());
+    this.addCommand({ id: "open-assistant", name: "Ollovin: Открыть помощника", callback: () => void this.activateView() });
+    this.addCommand({ id: "analyze-current-note", name: "Ollovin: Анализировать текущую заметку", callback: () => void this.analyzeCurrentNote() });
+    this.addCommand({ id: "find-related", name: "Ollovin: Найти связанные заметки", callback: () => void this.findRelated() });
+    this.addCommand({ id: "reindex", name: "Ollovin: Переиндексировать хранилище", callback: () => void this.reindex() });
+    this.addCommand({ id: "generate-test-vault", name: "Ollovin: Создать тестовые заметки", callback: () => void this.generateTestVault() });
     this.addSettingTab(new OllovinSettingTab(this.app, this));
   }
 
@@ -60,21 +60,22 @@ export default class OllovinPlugin extends Plugin {
   }
 
   async reindex(): Promise<void> {
-    const notice = new Notice("Ollovin: indexing Vault...", 0);
+    const notice = new Notice("Ollovin: индексация хранилища…", 0);
     try {
-      await this.index.rebuild((current, total) => notice.setMessage(`Ollovin: indexing ${current}/${total}`));
+      await this.index.rebuild((current, total) => notice.setMessage(`Ollovin: индексация ${current}/${total}`));
       notice.hide();
-      new Notice(`Ollovin: indexed ${this.index.size} chunks`);
+      new Notice(`Ollovin: проиндексировано фрагментов — ${this.index.size}`);
+      this.refreshViews();
     } catch (error) {
       notice.hide();
-      new Notice(`Ollovin: indexing failed — ${error instanceof Error ? error.message : String(error)}`);
+      new Notice(`Ollovin: ошибка индексации — ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   async analyzeCurrentNote(): Promise<void> {
     const file = this.getCurrentFile();
     if (!file) {
-      new Notice("Ollovin: open a Markdown note first");
+      new Notice("Ollovin: сначала откройте Markdown-заметку");
       return;
     }
     await this.activateView();
@@ -84,14 +85,35 @@ export default class OllovinPlugin extends Plugin {
 
   async findRelated(): Promise<void> {
     const file = this.getCurrentFile();
-    if (!file) return;
+    if (!file) {
+      new Notice("Ollovin: сначала откройте Markdown-заметку");
+      return;
+    }
     await this.activateView();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN)[0]?.view;
     if (view instanceof OllovinView) await view.findRelatedForFile(file);
   }
 
+  async generateTestVault(): Promise<void> {
+    try {
+      await generateTestVault(this.app);
+      new Notice("Ollovin: тестовые заметки созданы");
+      this.refreshViews();
+    } catch (error) {
+      new Notice(`Ollovin: не удалось создать тестовые заметки — ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   getCurrentFile(): TFile | null {
-    return this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? null;
+    // Важно: при нажатии кнопки в Sidebar активным view становится Sidebar,
+    // поэтому getActiveViewOfType(MarkdownView) больше не подходит.
+    return this.app.workspace.getActiveFile();
+  }
+
+  refreshViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN)) {
+      if (leaf.view instanceof OllovinView) leaf.view.render();
+    }
   }
 }
 
@@ -110,19 +132,19 @@ class OllovinView extends ItemView {
     this.contentEl.empty();
     this.contentEl.addClass("ollovin-view");
     this.contentEl.createEl("h2", { text: "🧠 Ollovin" });
-    this.contentEl.createDiv({ cls: "ollovin-status", text: `Index: ${this.plugin.index.size} chunks` });
+    this.contentEl.createDiv({ cls: "ollovin-status", text: `Индекс: ${this.plugin.index.size} фрагментов` });
 
-    const input = this.contentEl.createEl("textarea", { attr: { placeholder: "Ask Ollovin about your Vault..." } });
-    const ask = this.contentEl.createEl("button", { text: "Ask Ollovin" });
+    const input = this.contentEl.createEl("textarea", { attr: { placeholder: "Задайте вопрос по вашему хранилищу…" } });
+    const ask = this.contentEl.createEl("button", { text: "Спросить Ollovin" });
     ask.addEventListener("click", () => void this.ask(input.value));
 
     const actions = this.contentEl.createDiv({ cls: "ollovin-actions" });
-    this.addButton(actions, "Analyze current note", () => void this.analyzeCurrent());
-    this.addButton(actions, "Find related", () => void this.findCurrentRelated());
-    this.addButton(actions, "Generate test Vault", () => void generateTestVault(this.plugin.app));
-    this.addButton(actions, "Reindex Vault", () => void this.plugin.reindex());
+    this.addButton(actions, "Анализировать текущую заметку", () => void this.analyzeCurrent());
+    this.addButton(actions, "Найти связанные заметки", () => void this.findCurrentRelated());
+    this.addButton(actions, "Создать тестовые заметки", () => void this.plugin.generateTestVault());
+    this.addButton(actions, "Переиндексировать хранилище", () => void this.plugin.reindex());
 
-    this.contentEl.createEl("h3", { text: "Response" });
+    this.contentEl.createEl("h3", { text: "Результат" });
     this.contentEl.createDiv({ cls: "ollovin-response" });
   }
 
@@ -136,56 +158,83 @@ class OllovinView extends ItemView {
   }
 
   async ask(query: string): Promise<void> {
-    if (!query.trim()) return;
+    if (!query.trim()) {
+      new Notice("Ollovin: введите вопрос");
+      return;
+    }
     const response = this.responseEl();
-    response.setText("Searching Vault...");
+    response.setText("Поиск по хранилищу…");
     try {
       const results = await this.plugin.retriever.search(query);
       const context = formatContext(results);
-      const prompt = `User question:\n${query}\n\nVault context:\n${context}\n\nAnswer using only this context. If the context is insufficient, say so.`;
+      const prompt = `Вопрос пользователя:\n${query}\n\nКонтекст хранилища:\n${context}\n\nОтвечай только на основании этого контекста. Если данных недостаточно, скажи об этом.`;
       const answer = await this.plugin.ollama.generate(this.plugin.settings.llmModel, prompt, SYSTEM_PROMPT);
       response.setText(answer);
     } catch (error) {
-      response.setText(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      response.setText(`Ошибка: ${message}`);
+      new Notice(`Ollovin: ${message}`);
     }
   }
 
   async analyzeCurrent(): Promise<void> {
     const file = this.plugin.getCurrentFile();
-    if (file) await this.analyzeFile(file);
+    if (!file) {
+      new Notice("Ollovin: сначала откройте Markdown-заметку");
+      return;
+    }
+    await this.analyzeFile(file);
   }
 
   async analyzeFile(file: TFile): Promise<void> {
     const response = this.responseEl();
-    response.setText("Analyzing note...");
+    response.setText("Анализ заметки…");
     try {
       const content = await this.plugin.app.vault.cachedRead(file);
       const results = await this.plugin.retriever.search(content.slice(0, 1000));
-      const context = formatContext(results);
-      const prompt = `Analyze the current note. Return a concise summary, topics, suggested tags and suggested wikilinks.\n\nCurrent note (${file.path}):\n${content}\n\nRelated Vault context:\n${context}`;
+      const context = formatContext(results.filter((item) => item.chunk.path !== file.path));
+      const prompt = `Проанализируй текущую заметку. Верни краткое резюме, основные темы, предлагаемые теги и предлагаемые wikilinks. Не изменяй заметку.\n\nТекущая заметка (${file.path}):\n${content}\n\nСвязанный контекст хранилища:\n${context}`;
       const answer = await this.plugin.ollama.generate(this.plugin.settings.llmModel, prompt, SYSTEM_PROMPT);
       response.setText(answer);
     } catch (error) {
-      response.setText(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      response.setText(`Ошибка анализа: ${message}`);
+      new Notice(`Ollovin: ${message}`);
     }
   }
 
   async findCurrentRelated(): Promise<void> {
     const file = this.plugin.getCurrentFile();
-    if (file) await this.findRelatedForFile(file);
+    if (!file) {
+      new Notice("Ollovin: сначала откройте Markdown-заметку");
+      return;
+    }
+    await this.findRelatedForFile(file);
   }
 
   async findRelatedForFile(file: TFile): Promise<void> {
     const response = this.responseEl();
-    const content = await this.plugin.app.vault.cachedRead(file);
-    const results = await this.plugin.retriever.search(content.slice(0, 1200), 10);
-    response.empty();
-    response.createEl("strong", { text: "Related notes" });
-    for (const result of results.filter((item) => item.chunk.path !== file.path)) {
-      const row = response.createDiv();
-      row.setText(`${result.chunk.title} — ${(result.score * 100).toFixed(0)}%`);
-      row.addClass("ollovin-related-row");
-      row.addEventListener("click", () => void this.plugin.app.workspace.openLinkText(result.chunk.path, file.path));
+    response.setText("Поиск связанных заметок…");
+    try {
+      const content = await this.plugin.app.vault.cachedRead(file);
+      const results = await this.plugin.retriever.search(content.slice(0, 1200), 10);
+      response.empty();
+      response.createEl("strong", { text: "Связанные заметки" });
+      const related = results.filter((item) => item.chunk.path !== file.path);
+      if (related.length === 0) {
+        response.createDiv({ text: "Связанных заметок не найдено. Попробуйте переиндексировать хранилище." });
+        return;
+      }
+      for (const result of related) {
+        const row = response.createDiv();
+        row.setText(`${result.chunk.title} — ${(result.score * 100).toFixed(0)}%`);
+        row.addClass("ollovin-related-row");
+        row.addEventListener("click", () => void this.plugin.app.workspace.openLinkText(result.chunk.path, file.path));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      response.setText(`Ошибка поиска: ${message}`);
+      new Notice(`Ollovin: ${message}`);
     }
   }
 }
@@ -200,9 +249,9 @@ class OllovinSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Ollovin" });
+    containerEl.createEl("h2", { text: "Ollovin — локальный ИИ для Obsidian" });
 
-    new Setting(containerEl).setName("Ollama endpoint").addText((text) => text
+    new Setting(containerEl).setName("Адрес Ollama").setDesc("Адрес локального сервера Ollama.").addText((text) => text
       .setValue(this.plugin.settings.ollamaEndpoint)
       .setPlaceholder("http://localhost:11434")
       .onChange(async (value) => {
@@ -210,7 +259,7 @@ class OllovinSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       }));
 
-    new Setting(containerEl).setName("LLM model").setDesc("Model used for chat and analysis.").addText((text) => text
+    new Setting(containerEl).setName("Модель ИИ").setDesc("Модель для чата и анализа заметок.").addText((text) => text
       .setValue(this.plugin.settings.llmModel)
       .setPlaceholder("qwen3:8b")
       .onChange(async (value) => {
@@ -218,7 +267,7 @@ class OllovinSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       }));
 
-    new Setting(containerEl).setName("Embedding model").setDesc("Local Ollama embedding model. Reindex after changing it.").addText((text) => text
+    new Setting(containerEl).setName("Модель эмбеддингов").setDesc("Локальная модель Ollama для семантического поиска. После смены модели переиндексируйте хранилище.").addText((text) => text
       .setValue(this.plugin.settings.embeddingModel)
       .setPlaceholder("embeddinggemma")
       .onChange(async (value) => {
@@ -226,23 +275,23 @@ class OllovinSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       }));
 
-    new Setting(containerEl).setName("Connection").addButton((button) => button
-      .setButtonText("Test Ollama")
+    new Setting(containerEl).setName("Подключение").setDesc("Проверить доступность Ollama и список моделей.").addButton((button) => button
+      .setButtonText("Проверить Ollama")
       .onClick(async () => {
         try {
           const models = await this.plugin.ollama.testConnection();
-          new Notice(`Ollama connected — ${models.length} model(s)`);
+          new Notice(`Ollama подключена — моделей: ${models.length}`);
         } catch (error) {
-          new Notice(`Ollama connection failed — ${error instanceof Error ? error.message : String(error)}`);
+          new Notice(`Ошибка подключения к Ollama — ${error instanceof Error ? error.message : String(error)}`);
         }
       }));
 
-    new Setting(containerEl).setName("Test data").setDesc("Creates a synthetic Vault with AI, Android, research and project notes for testing retrieval and RAG.").addButton((button) => button
-      .setButtonText("Generate test Vault")
-      .onClick(() => void generateTestVault(this.plugin.app)));
+    new Setting(containerEl).setName("Тестовые данные").setDesc("Создать синтетическое хранилище для проверки поиска и RAG.").addButton((button) => button
+      .setButtonText("Создать тестовые заметки")
+      .onClick(() => void this.plugin.generateTestVault()));
 
-    new Setting(containerEl).setName("Index").setDesc(`${this.plugin.index.size} chunks currently indexed.`).addButton((button) => button
-      .setButtonText("Reindex Vault")
+    new Setting(containerEl).setName("Индекс").setDesc(`Сейчас проиндексировано: ${this.plugin.index.size} фрагментов.`).addButton((button) => button
+      .setButtonText("Переиндексировать")
       .onClick(() => void this.plugin.reindex()));
   }
 }
