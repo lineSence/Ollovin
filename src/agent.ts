@@ -1,9 +1,8 @@
 import { App, TFile, normalizePath } from "obsidian";
 import { AIAction, AIActionPlan, ChangePreview } from "./types";
 
-export const SYSTEM_PROMPT = `Ты Ollovin — локальный ИИ-помощник для Obsidian. Используй только предоставленный контекст. Если нужно предложить изменения, верни только JSON вида {"summary":"string","actions":[...]}. Допустимые типы: ADD_TAG(tag), REMOVE_TAG(tag), ADD_LINK(target), REMOVE_LINK(target), EDIT_NOTE(content), CREATE_NOTE(content), MOVE_NOTE(destination), RENAME_NOTE(newPath), UPDATE_FRONTMATTER(frontmatter). Для ADD_TAG/REMOVE_TAG/ADD_LINK/REMOVE_LINK/EDIT_NOTE/CREATE_NOTE/MOVE_NOTE/RENAME_NOTE поле file обязательно. Никогда не используй DELETE.`;
+export const SYSTEM_PROMPT = `Ты Ollovin — локальный ИИ-помощник для Obsidian. Используй только предоставленный контекст. Если нужно предложить изменения, верни только JSON вида {"summary":"string","actions":[{"id":"1","type":"ADD_TAG","file":"путь/заметки.md","tag":"тег"}]}. КРИТИЧЕСКИ ВАЖНО: каждое действие, кроме UPDATE_FRONTMATTER, ОБЯЗАТЕЛЬНО содержит поле file с точным путём заметки из контекста. UPDATE_FRONTMATTER тоже содержит file. Не используй поля path, note, notePath или targetFile вместо file. Допустимые типы: ADD_TAG, REMOVE_TAG, ADD_LINK, REMOVE_LINK, EDIT_NOTE, CREATE_NOTE, MOVE_NOTE, RENAME_NOTE, UPDATE_FRONTMATTER. Никогда не используй DELETE_NOTE.`;
 const TYPES = ["ADD_TAG","REMOVE_TAG","ADD_LINK","REMOVE_LINK","EDIT_NOTE","CREATE_NOTE","MOVE_NOTE","RENAME_NOTE","UPDATE_FRONTMATTER"] as const;
-
 type RawPlan = { summary?: unknown; actions?: unknown };
 
 export class ActionPlanner {
@@ -18,15 +17,21 @@ export class ActionPlanner {
     return { summary: typeof parsed.summary === "string" ? parsed.summary : "", actions };
   }
 
-  /** Проверяет и нормализует план. Важно: здесь никогда не вызываются методы строк у неизвестных значений. */
   private validate(value: unknown, index: number): AIAction {
     const x = asRecord(value);
     if (!x || typeof x.id !== "string" || !x.id.trim() || typeof x.type !== "string" || !TYPES.includes(x.type as typeof TYPES[number])) {
       throw new Error(`Некорректное действие №${index + 1}: нужен id и допустимый type`);
     }
     const type = x.type as AIAction["type"];
-    const fileRequired = type !== "UPDATE_FRONTMATTER";
-    if (fileRequired && !nonEmptyString(x.file)) throw new Error(`Некорректное действие №${index + 1}: отсутствует file`);
+    // Некоторые локальные модели называют путь path/notePath. Принимаем только
+    // однозначные строковые алиасы и нормализуем их в file; произвольные поля
+    // не угадываем, чтобы ИИ не мог изменить не ту заметку.
+    if (!nonEmptyString(x.file)) {
+      const aliases = [x.path, x.notePath, x.note, x.targetFile];
+      const alias = aliases.find(nonEmptyString);
+      if (alias) x.file = alias;
+    }
+    if (!nonEmptyString(x.file)) throw new Error(`Некорректное действие №${index + 1}: отсутствует file`);
     const required: Partial<Record<AIAction["type"], string>> = {
       ADD_TAG: "tag", REMOVE_TAG: "tag", ADD_LINK: "target", REMOVE_LINK: "target",
       EDIT_NOTE: "content", CREATE_NOTE: "content", MOVE_NOTE: "destination", RENAME_NOTE: "newPath",
@@ -36,7 +41,7 @@ export class ActionPlanner {
     if (type === "UPDATE_FRONTMATTER" && (!x.frontmatter || typeof x.frontmatter !== "object" || Array.isArray(x.frontmatter))) {
       throw new Error(`Некорректное действие №${index + 1}: отсутствует frontmatter`);
     }
-    const action = { ...x, file: typeof x.file === "string" ? normalizePath(x.file.trim()) : x.file } as AIAction;
+    const action = { ...x, file: normalizePath((x.file as string).trim()) } as AIAction;
     if (action.type === "ADD_TAG" || action.type === "REMOVE_TAG") action.tag = normTag(action.tag);
     if (action.type === "ADD_LINK" || action.type === "REMOVE_LINK") action.target = normLink(action.target);
     return action;
