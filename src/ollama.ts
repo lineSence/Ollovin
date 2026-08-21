@@ -1,3 +1,4 @@
+import { requestUrl } from "obsidian";
 import { OllamaModel } from "./types";
 
 export class OllamaClient {
@@ -8,31 +9,32 @@ export class OllamaClient {
   }
 
   async listModels(): Promise<OllamaModel[]> {
-    const response = await fetch(this.url("/api/tags"));
-    if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
-    const data = (await response.json()) as { models?: OllamaModel[] };
+    const response = await requestUrl({ url: this.url("/api/tags") });
+    const data = response.json as { models?: OllamaModel[] };
     return data.models ?? [];
   }
 
   async generate(model: string, prompt: string, system?: string): Promise<string> {
-    const response = await fetch(this.url("/api/generate"), {
+    if (!model) throw new Error("No LLM model selected. Configure it in Ollovin settings.");
+    const response = await requestUrl({
+      url: this.url("/api/generate"),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, prompt, system, stream: false }),
     });
-    if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
-    const data = (await response.json()) as { response?: string };
+    const data = response.json as { response?: string };
     return data.response ?? "";
   }
 
   async embed(model: string, input: string | string[]): Promise<number[][]> {
-    const response = await fetch(this.url("/api/embed"), {
+    if (!model) return [];
+    const response = await requestUrl({
+      url: this.url("/api/embed"),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model, input }),
     });
-    if (!response.ok) throw new Error(`Ollama embedding returned HTTP ${response.status}`);
-    const data = (await response.json()) as { embeddings?: number[][] };
+    const data = response.json as { embeddings?: number[][] };
     return data.embeddings ?? [];
   }
 
