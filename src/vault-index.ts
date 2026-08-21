@@ -1,5 +1,4 @@
-import { App, TFile, Vault } from "obsidian";
-import { createHash } from "crypto";
+import { App, TFile } from "obsidian";
 import { OllovinSettings, NoteChunk } from "./types";
 import { OllamaClient } from "./ollama";
 
@@ -82,7 +81,7 @@ export class VaultIndex {
         content: text,
         tags: [...new Set(tags)],
         links: [...new Set(links)],
-        hash: createHash("sha256").update(text).digest("hex"),
+        hash: simpleHash(text),
       });
     };
 
@@ -101,4 +100,13 @@ export class VaultIndex {
     flush();
     return result;
   }
+}
+
+function simpleHash(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
