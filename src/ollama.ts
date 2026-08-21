@@ -14,13 +14,13 @@ export class OllamaClient {
     return data.models ?? [];
   }
 
-  async generate(model: string, prompt: string, system?: string): Promise<string> {
+  async generate(model: string, prompt: string, system?: string, format?: "json"): Promise<string> {
     if (!model) throw new Error("No LLM model selected. Configure it in Ollovin settings.");
     const response = await requestUrl({
       url: this.url("/api/generate"),
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, system, stream: false }),
+      body: JSON.stringify({ model, prompt, system, stream: false, ...(format ? { format } : {}) }),
     });
     const data = response.json as { response?: string };
     return data.response ?? "";
