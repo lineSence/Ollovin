@@ -4,6 +4,7 @@ import { OllovinSettings, RetrievalResult } from "./src/types";
 import { VaultIndex } from "./src/vault-index";
 import { Retriever } from "./src/retrieval";
 import { ActionPlanner, SYSTEM_PROMPT } from "./src/agent";
+import { generateTestVault } from "./src/test-vault-generator";
 
 const DEFAULT_SETTINGS: OllovinSettings = {
   ollamaEndpoint: "http://localhost:11434",
@@ -33,6 +34,7 @@ export default class OllovinPlugin extends Plugin {
     this.addCommand({ id: "analyze-current-note", name: "Analyze Current Note", callback: () => void this.analyzeCurrentNote() });
     this.addCommand({ id: "find-related", name: "Find Related Notes", callback: () => void this.findRelated() });
     this.addCommand({ id: "reindex", name: "Reindex Vault", callback: () => void this.reindex() });
+    this.addCommand({ id: "generate-test-vault", name: "Generate Test Vault", callback: () => void generateTestVault(this.app) });
     this.addSettingTab(new OllovinSettingTab(this.app, this));
   }
 
@@ -117,6 +119,7 @@ class OllovinView extends ItemView {
     const actions = this.contentEl.createDiv({ cls: "ollovin-actions" });
     this.addButton(actions, "Analyze current note", () => void this.analyzeCurrent());
     this.addButton(actions, "Find related", () => void this.findCurrentRelated());
+    this.addButton(actions, "Generate test Vault", () => void generateTestVault(this.plugin.app));
     this.addButton(actions, "Reindex Vault", () => void this.plugin.reindex());
 
     this.contentEl.createEl("h3", { text: "Response" });
@@ -233,6 +236,10 @@ class OllovinSettingTab extends PluginSettingTab {
           new Notice(`Ollama connection failed — ${error instanceof Error ? error.message : String(error)}`);
         }
       }));
+
+    new Setting(containerEl).setName("Test data").setDesc("Creates a synthetic Vault with AI, Android, research and project notes for testing retrieval and RAG.").addButton((button) => button
+      .setButtonText("Generate test Vault")
+      .onClick(() => void generateTestVault(this.plugin.app)));
 
     new Setting(containerEl).setName("Index").setDesc(`${this.plugin.index.size} chunks currently indexed.`).addButton((button) => button
       .setButtonText("Reindex Vault")
