@@ -1,4 +1,4 @@
-import { App, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
+import { App, ItemView, MarkdownView, Notice, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { OllamaClient } from "./src/ollama";
 import { OllovinSettings, RetrievalResult } from "./src/types";
 import { VaultIndex } from "./src/vault-index";
@@ -28,11 +28,11 @@ export default class OllovinPlugin extends Plugin {
     this.planner = new ActionPlanner(this.app);
 
     this.registerView(VIEW_TYPE_OLLOVIN, (leaf) => new OllovinView(leaf, this));
-    this.addRibbonIcon("brain", "Open Ollovin", () => this.activateView());
+    this.addRibbonIcon("brain", "Open Ollovin", () => void this.activateView());
     this.addCommand({ id: "open-assistant", name: "Open Assistant", callback: () => this.activateView() });
-    this.addCommand({ id: "analyze-current-note", name: "Analyze Current Note", callback: () => this.analyzeCurrentNote() });
-    this.addCommand({ id: "find-related", name: "Find Related Notes", callback: () => this.findRelated() });
-    this.addCommand({ id: "reindex", name: "Reindex Vault", callback: () => this.reindex() });
+    this.addCommand({ id: "analyze-current-note", name: "Analyze Current Note", callback: () => void this.analyzeCurrentNote() });
+    this.addCommand({ id: "find-related", name: "Find Related Notes", callback: () => void this.findRelated() });
+    this.addCommand({ id: "reindex", name: "Reindex Vault", callback: () => void this.reindex() });
     this.addSettingTab(new OllovinSettingTab(this.app, this));
   }
 
@@ -76,8 +76,7 @@ export default class OllovinPlugin extends Plugin {
       return;
     }
     await this.activateView();
-    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN);
-    const view = leaves[0]?.view;
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN)[0]?.view;
     if (view instanceof OllovinView) await view.analyzeFile(file);
   }
 
@@ -85,8 +84,7 @@ export default class OllovinPlugin extends Plugin {
     const file = this.getCurrentFile();
     if (!file) return;
     await this.activateView();
-    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN);
-    const view = leaves[0]?.view;
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE_OLLOVIN)[0]?.view;
     if (view instanceof OllovinView) await view.findRelatedForFile(file);
   }
 
@@ -97,26 +95,20 @@ export default class OllovinPlugin extends Plugin {
 
 export const VIEW_TYPE_OLLOVIN = "ollovin-sidebar";
 
-class OllovinView extends import("obsidian").ItemView {
+class OllovinView extends ItemView {
   constructor(leaf: WorkspaceLeaf, private readonly plugin: OllovinPlugin) { super(leaf); }
   getViewType(): string { return VIEW_TYPE_OLLOVIN; }
   getDisplayText(): string { return "Ollovin"; }
   getIcon(): string { return "brain"; }
 
-  async onOpen(): Promise<void> {
-    this.render();
-  }
-
-  async onClose(): Promise<void> {
-    this.contentEl.empty();
-  }
+  async onOpen(): Promise<void> { this.render(); }
+  async onClose(): Promise<void> { this.contentEl.empty(); }
 
   render(): void {
     this.contentEl.empty();
     this.contentEl.addClass("ollovin-view");
     this.contentEl.createEl("h2", { text: "🧠 Ollovin" });
-    const status = this.contentEl.createDiv({ cls: "ollovin-status" });
-    status.setText(`Index: ${this.plugin.index.size} chunks`);
+    this.contentEl.createDiv({ cls: "ollovin-status", text: `Index: ${this.plugin.index.size} chunks` });
 
     const input = this.contentEl.createEl("textarea", { attr: { placeholder: "Ask Ollovin about your Vault..." } });
     const ask = this.contentEl.createEl("button", { text: "Ask Ollovin" });
@@ -163,11 +155,11 @@ class OllovinView extends import("obsidian").ItemView {
   async analyzeFile(file: TFile): Promise<void> {
     const response = this.responseEl();
     response.setText("Analyzing note...");
-    const content = await this.plugin.app.vault.cachedRead(file);
-    const results = await this.plugin.retriever.search(content.slice(0, 1000));
-    const context = formatContext(results);
-    const prompt = `Analyze the current note. Return a concise summary, topics, suggested tags and suggested wikilinks.\n\nCurrent note (${file.path}):\n${content}\n\nRelated Vault context:\n${context}`;
     try {
+      const content = await this.plugin.app.vault.cachedRead(file);
+      const results = await this.plugin.retriever.search(content.slice(0, 1000));
+      const context = formatContext(results);
+      const prompt = `Analyze the current note. Return a concise summary, topics, suggested tags and suggested wikilinks.\n\nCurrent note (${file.path}):\n${content}\n\nRelated Vault context:\n${context}`;
       const answer = await this.plugin.ollama.generate(this.plugin.settings.llmModel, prompt, SYSTEM_PROMPT);
       response.setText(answer);
     } catch (error) {
@@ -189,6 +181,7 @@ class OllovinView extends import("obsidian").ItemView {
     for (const result of results.filter((item) => item.chunk.path !== file.path)) {
       const row = response.createDiv();
       row.setText(`${result.chunk.title} — ${(result.score * 100).toFixed(0)}%`);
+      row.addClass("ollovin-related-row");
       row.addEventListener("click", () => void this.plugin.app.workspace.openLinkText(result.chunk.path, file.path));
     }
   }
