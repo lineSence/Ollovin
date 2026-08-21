@@ -1,0 +1,29 @@
+.ollovin-view textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.ollovin-view button {
+  margin: 4px 4px 4px 0;
+}
+
+.ollovin-status {
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.ollovin-response {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+
+.ollovin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
