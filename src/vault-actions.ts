@@ -1,11 +1,10 @@
-import { App } from "obsidian";
 import { AIActionPlan, ChangePreview } from "./types";
 import { ActionPlanner } from "./agent";
 import { OllamaClient } from "./ollama";
 import { VaultAnalysisPlan } from "./vault-analysis";
 
 export class VaultActionPlanner {
-  constructor(private readonly app: App, private readonly ollama: OllamaClient, private readonly planner: ActionPlanner) {}
+  constructor(private readonly ollama: OllamaClient, private readonly planner: ActionPlanner) {}
 
   async createPlan(model: string, analysis: VaultAnalysisPlan): Promise<AIActionPlan> {
     const context = analysis.clusters.map(c => `${c.name}: ${c.description}\nЗаметки: ${c.notePaths.join(", ")}`).join("\n\n");
@@ -16,5 +15,9 @@ export class VaultActionPlanner {
 
   async preview(plan: AIActionPlan): Promise<ChangePreview[]> {
     return this.planner.preview(plan);
+  }
+
+  async apply(previews: ChangePreview[]): Promise<() => Promise<void>> {
+    return this.planner.apply(previews);
   }
 }
