@@ -1,0 +1,9 @@
+{
+  "id": "ollovin",
+  "name": "Ollovin",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Local AI assistant for analyzing and organizing your Obsidian Vault.",
+  "author": "lineSence",
+  "isDesktopOnly": true
+}
